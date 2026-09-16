@@ -1,138 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../services/supabase';
+import { formatDate, formatTime, getDateKey, getJakartaDateParts, getMonthKey, getWeekRange } from '../../utils/date';
 
 import { Search, RefreshCw, ChevronLeft, ChevronRight, Filter, CalendarDays } from 'lucide-react';
 
 import Swal from 'sweetalert2';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
 
-const TIME_ZONE = 'Asia/Jakarta';
 const ITEMS_PER_PAGE = 10;
-
-// =====================================================
-// FORMAT TANGGAL
-// =====================================================
-
-function formatDate(date) {
-  if (!date) return '-';
-
-  return new Date(date).toLocaleDateString('id-ID', {
-    timeZone: TIME_ZONE,
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-// =====================================================
-// FORMAT WAKTU
-// =====================================================
-
-function formatTime(date) {
-  if (!date) return '-';
-
-  return new Date(date).toLocaleTimeString('id-ID', {
-    timeZone: TIME_ZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-// =====================================================
-// MENGAMBIL TANGGAL WIB
-// =====================================================
-
-function getJakartaDateParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-
-  const result = {};
-
-  parts.forEach((part) => {
-    if (part.type !== 'literal') {
-      result[part.type] = part.value;
-    }
-  });
-
-  return {
-    year: Number(result.year),
-    month: Number(result.month),
-    day: Number(result.day),
-  };
-}
-
-// =====================================================
-// MEMBUAT KEY TANGGAL WIB
-// YYYY-MM-DD
-// =====================================================
-
-function getDateKey(date) {
-  const parts = getJakartaDateParts(new Date(date));
-
-  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
-}
-
-// =====================================================
-// GET DAY OF WEEK WIB
-// 0 = Minggu
-// 1 = Senin
-// ...
-// 6 = Sabtu
-// =====================================================
-
-function getJakartaDayOfWeek(date = new Date()) {
-  const dateKey = getDateKey(date);
-
-  const [year, month, day] = dateKey.split('-').map(Number);
-
-  return new Date(year, month - 1, day).getDay();
-}
-
-// =====================================================
-// GET START & END MINGGU
-// Senin - Minggu
-// =====================================================
-
-function getWeekRange(date = new Date()) {
-  const { year, month, day } = getJakartaDateParts(date);
-
-  const current = new Date(year, month - 1, day);
-
-  const dayOfWeek = current.getDay();
-
-  // Jika Minggu = 0, mundur 6 hari
-  // Jika Senin = 1, mundur 0 hari
-  const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-  const monday = new Date(current);
-  monday.setDate(current.getDate() - diffToMonday);
-
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-
-  return {
-    start: formatLocalDateKey(monday),
-    end: formatLocalDateKey(sunday),
-  };
-}
-
-// =====================================================
-// FORMAT LOCAL DATE
-// =====================================================
-
-function formatLocalDateKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-// =====================================================
-// STATUS BADGE
-// =====================================================
 
 function StatusBadge({ status }) {
   const config = {
@@ -160,65 +34,19 @@ function StatusBadge({ status }) {
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${current.className}`}>{current.text}</span>;
 }
 
-// =====================================================
-// COMPONENT
-// =====================================================
-
 export default function AllQueues() {
   const [queues, setQueues] = useState([]);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-
-  // FILTER WAKTU
   const [periodFilter, setPeriodFilter] = useState('all');
-
-  // Bulan yang dipilih
   const [selectedMonth, setSelectedMonth] = useState('');
-
-  // Tahun yang dipilih
   const [selectedYear, setSelectedYear] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-
-  // =====================================================
-  // LOAD DATA
-  // =====================================================
-
-  useEffect(() => {
-    AOS.init({
-      duration: 600,
-      once: true,
-    });
-
-    loadQueues();
-
-    const channel = supabase
-      .channel('admin-all-queues')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'queues',
-        },
-        () => {
-          loadQueues();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // =====================================================
-  // LOAD QUEUES
-  // =====================================================
 
   async function loadQueues() {
     setLoading(true);
@@ -242,21 +70,28 @@ export default function AllQueues() {
     setLoading(false);
   }
 
-  // =====================================================
-  // REFRESH
-  // =====================================================
+  useEffect(() => {
+    loadQueues();
+
+    const channel = supabase.channel('admin-all-queues').on('postgres_changes', { event: '*', schema: 'public', table: 'queues' }, loadQueues).subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   async function refreshData() {
     setRefreshing(true);
 
-    await loadQueues();
-
-    setRefreshing(false);
+    try {
+      await loadQueues();
+    } catch (error) {
+      console.error('Gagal memperbarui antrean:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Memperbarui', text: error.message || 'Terjadi kesalahan.' });
+    } finally {
+      setRefreshing(false);
+    }
   }
-
-  // =====================================================
-  // FILTER DATA
-  // =====================================================
 
   const filteredQueues = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -274,9 +109,6 @@ export default function AllQueues() {
     const weekRange = getWeekRange(today);
 
     return queues.filter((queue) => {
-      // ================================================
-      // SEARCH
-      // ================================================
 
       const matchesSearch =
         !keyword ||
@@ -287,61 +119,33 @@ export default function AllQueues() {
           .toLowerCase()
           .includes(keyword);
 
-      // ================================================
-      // STATUS
-      // ================================================
-
       const matchesStatus = statusFilter === 'all' || queue.status === statusFilter;
-
-      // ================================================
-      // TANGGAL QUEUE
-      // ================================================
 
       const queueDateKey = getDateKey(queue.created_at);
 
-      const queueParts = getJakartaDateParts(new Date(queue.created_at));
+      const queueMonth = getMonthKey(queue.created_at);
 
-      const queueMonth = `${queueParts.year}-${String(queueParts.month).padStart(2, '0')}`;
-
-      const queueYear = String(queueParts.year);
-
-      // ================================================
-      // FILTER PERIODE
-      // ================================================
+      const queueYear = queueMonth?.split('-')[0];
 
       let matchesPeriod = true;
-
-      // SEMUA
       if (periodFilter === 'all') {
         matchesPeriod = true;
       }
-
-      // HARI INI
       if (periodFilter === 'today') {
         matchesPeriod = queueDateKey === todayKey;
       }
-
-      // MINGGU INI
       if (periodFilter === 'week') {
         matchesPeriod = queueDateKey >= weekRange.start && queueDateKey <= weekRange.end;
       }
-
-      // BULAN INI
       if (periodFilter === 'month') {
         matchesPeriod = queueMonth === currentMonth;
       }
-
-      // TAHUN INI
       if (periodFilter === 'year') {
         matchesPeriod = queueYear === currentYear;
       }
-
-      // BULAN TERTENTU
       if (periodFilter === 'custom-month') {
         matchesPeriod = selectedMonth && queueMonth === selectedMonth;
       }
-
-      // TAHUN TERTENTU
       if (periodFilter === 'custom-year') {
         matchesPeriod = selectedYear && queueYear === selectedYear;
       }
@@ -349,10 +153,6 @@ export default function AllQueues() {
       return matchesSearch && matchesStatus && matchesPeriod;
     });
   }, [queues, search, statusFilter, periodFilter, selectedMonth, selectedYear]);
-
-  // =====================================================
-  // PAGINATION
-  // =====================================================
 
   const totalPages = Math.max(1, Math.ceil(filteredQueues.length / ITEMS_PER_PAGE));
 
@@ -362,17 +162,9 @@ export default function AllQueues() {
     return filteredQueues.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredQueues, currentPage]);
 
-  // =====================================================
-  // RESET PAGE
-  // =====================================================
-
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter, periodFilter, selectedMonth, selectedYear]);
-
-  // =====================================================
-  // CEK PAGE
-  // =====================================================
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -380,32 +172,24 @@ export default function AllQueues() {
     }
   }, [currentPage, totalPages]);
 
-  // =====================================================
-  // GENERATE YEAR OPTIONS
-  // =====================================================
-
   const yearOptions = useMemo(() => {
     const years = new Set();
 
     queues.forEach((queue) => {
       if (!queue.created_at) return;
 
-      const { year } = getJakartaDateParts(new Date(queue.created_at));
+      const dateParts = getJakartaDateParts(queue.created_at);
 
-      years.add(year);
+      if (!dateParts) return;
+
+      years.add(dateParts.year);
     });
-
-    // Tambahkan tahun sekarang
-    const currentYear = getJakartaDateParts(new Date()).year;
+    const currentYear = getJakartaDateParts().year;
 
     years.add(currentYear);
 
     return [...years].sort((a, b) => b - a);
   }, [queues]);
-
-  // =====================================================
-  // LOADING
-  // =====================================================
 
   if (loading) {
     return (
@@ -419,15 +203,9 @@ export default function AllQueues() {
     );
   }
 
-  // =====================================================
-  // UI
-  // =====================================================
-
   return (
     <div className="space-y-6">
-      {/* =================================================
-          HEADER
-      ================================================= */}
+      
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between" data-aos="fade-down">
         <div>
@@ -444,13 +222,11 @@ export default function AllQueues() {
         </button>
       </div>
 
-      {/* =================================================
-          FILTER
-      ================================================= */}
+      
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-aos="fade-up">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-          {/* SEARCH */}
+          
 
           <div className="relative lg:col-span-2">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -464,7 +240,7 @@ export default function AllQueues() {
             />
           </div>
 
-          {/* STATUS */}
+          
 
           <div className="relative">
             <Filter size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -480,7 +256,7 @@ export default function AllQueues() {
             </select>
           </div>
 
-          {/* PERIODE */}
+          
 
           <div className="relative">
             <CalendarDays size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -517,9 +293,7 @@ export default function AllQueues() {
           </div>
         </div>
 
-        {/* =================================================
-            CUSTOM MONTH
-        ================================================= */}
+        
 
         {periodFilter === 'custom-month' && (
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -529,9 +303,7 @@ export default function AllQueues() {
           </div>
         )}
 
-        {/* =================================================
-            CUSTOM YEAR
-        ================================================= */}
+        
 
         {periodFilter === 'custom-year' && (
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -550,12 +322,10 @@ export default function AllQueues() {
         )}
       </div>
 
-      {/* =================================================
-          TABLE
-      ================================================= */}
+      
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" data-aos="fade-up">
-        {/* HEADER TABLE */}
+        
 
         <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
@@ -565,9 +335,7 @@ export default function AllQueues() {
           </div>
         </div>
 
-        {/* =================================================
-            DESKTOP TABLE
-        ================================================= */}
+        
 
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full">
@@ -582,8 +350,6 @@ export default function AllQueues() {
                 <th className="px-5 py-4 text-xs font-bold uppercase text-slate-500">Tanggal</th>
 
                 <th className="px-5 py-4 text-xs font-bold uppercase text-slate-500">Waktu Masuk</th>
-
-                <th className="px-5 py-4 text-xs font-bold uppercase text-slate-500">Estimasi</th>
 
                 <th className="px-5 py-4 text-xs font-bold uppercase text-slate-500">Status</th>
               </tr>
@@ -603,8 +369,6 @@ export default function AllQueues() {
 
                     <td className="px-5 py-4 text-sm text-slate-500">{formatTime(queue.created_at)}</td>
 
-                    <td className="px-5 py-4 text-sm text-slate-500">{queue.estimated_time ? `${queue.estimated_time} menit` : '-'}</td>
-
                     <td className="px-5 py-4">
                       <StatusBadge status={queue.status} />
                     </td>
@@ -612,7 +376,7 @@ export default function AllQueues() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" className="px-5 py-12 text-center text-sm text-slate-400">
+                  <td colSpan="6" className="px-5 py-12 text-center text-sm text-slate-400">
                     Tidak ada data yang sesuai.
                   </td>
                 </tr>
@@ -621,9 +385,7 @@ export default function AllQueues() {
           </table>
         </div>
 
-        {/* =================================================
-            MOBILE
-        ================================================= */}
+        
 
         <div className="divide-y divide-slate-100 md:hidden">
           {paginatedQueues.length > 0 ? (
@@ -657,12 +419,6 @@ export default function AllQueues() {
 
                     <span className="text-sm text-slate-600">{formatTime(queue.created_at)}</span>
                   </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-xs text-slate-400">Estimasi</span>
-
-                    <span className="text-sm text-slate-600">{queue.estimated_time ? `${queue.estimated_time} menit` : '-'}</span>
-                  </div>
                 </div>
               </div>
             ))
@@ -671,9 +427,7 @@ export default function AllQueues() {
           )}
         </div>
 
-        {/* =================================================
-            PAGINATION
-        ================================================= */}
+        
 
         {filteredQueues.length > 0 && (
           <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">

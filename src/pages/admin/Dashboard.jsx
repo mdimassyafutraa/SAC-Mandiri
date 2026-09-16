@@ -1,150 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../services/supabase';
-import { useAuth } from '../../context/AuthContext';
-
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { formatDate, formatTime, getCurrentMonthKey, getDateKey, getJakartaHour, getLast7Days, getMonthDates, getMonthKey, getMonthLabel, getTodayKey, TIME_ZONE } from '../../utils/date';
 
 import { Activity, Users, Clock, CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, CalendarDays, TrendingUp } from 'lucide-react';
 
 import Swal from 'sweetalert2';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
 
-const TIME_ZONE = 'Asia/Jakarta';
 const ITEMS_PER_PAGE = 10;
-
-function getJakartaDateParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-
-  const result = {};
-
-  parts.forEach((part) => {
-    if (part.type !== 'literal') {
-      result[part.type] = part.value;
-    }
-  });
-
-  return result;
-}
-
-function getTodayKey() {
-  const { year, month, day } = getJakartaDateParts();
-
-  return `${year}-${month}-${day}`;
-}
-
-function getDateKey(date) {
-  if (!date) return null;
-
-  const { year, month, day } = getJakartaDateParts(new Date(date));
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatDate(date) {
-  if (!date) return '-';
-
-  return new Date(date).toLocaleDateString('id-ID', {
-    timeZone: TIME_ZONE,
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-function formatTime(date) {
-  if (!date) return '-';
-
-  return new Date(date).toLocaleTimeString('id-ID', {
-    timeZone: TIME_ZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-function getJakartaHour(date) {
-  if (!date) return null;
-
-  return Number(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: TIME_ZONE,
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).format(new Date(date)),
-  );
-}
-
-function getMonthKey(date) {
-  if (!date) return null;
-
-  const { year, month } = getJakartaDateParts(new Date(date));
-
-  return `${year}-${month}`;
-}
-
-function getMonthLabel(monthKey) {
-  if (!monthKey) return '';
-
-  const [year, month] = monthKey.split('-');
-
-  return new Date(`${year}-${month}-01T00:00:00+07:00`).toLocaleDateString('id-ID', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: TIME_ZONE,
-  });
-}
-
-function getCurrentMonthKey() {
-  const { year, month } = getJakartaDateParts();
-
-  return `${year}-${month}`;
-}
-
-function getLast7Days() {
-  const result = [];
-
-  const today = new Date();
-
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-
-    result.push(date);
-  }
-
-  return result;
-}
-
-function getDaysInMonth(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number);
-
-  return new Date(year, month, 0).getDate();
-}
-
-function getMonthDates(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number);
-  const totalDays = new Date(year, month, 0).getDate();
-
-  const dates = [];
-
-  for (let day = 1; day <= totalDays; day++) {
-    const date = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00+07:00`);
-
-    dates.push(date);
-  }
-
-  return dates;
-}
 
 function StatCard({ title, value, subtitle, icon: Icon, iconClass = 'bg-blue-100 text-blue-700' }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md" data-aos="fade-up">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
@@ -187,10 +53,7 @@ function StatusBadge({ status }) {
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
-
   const [queues, setQueues] = useState([]);
-  const [csUsers, setCsUsers] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -200,41 +63,11 @@ export default function AdminDashboard() {
 
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    AOS.init({
-      duration: 600,
-      once: true,
-    });
-  }, []);
-
-  useEffect(() => {
-    loadData();
-
-    const channel = supabase
-      .channel('admin-dashboard-queues')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'queues',
-        },
-        () => {
-          loadQueues();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   async function loadData() {
     setLoading(true);
 
     try {
-      await Promise.all([loadQueues(), loadCSUsers()]);
+      await loadQueues();
     } catch (error) {
       console.error(error);
 
@@ -261,43 +94,35 @@ export default function AdminDashboard() {
     setQueues(data || []);
   }
 
-  async function loadCSUsers() {
-    const { data, error } = await supabase.from('users').select('id, username, role').eq('role', 'cs').order('username', {
-      ascending: true,
-    });
+  useEffect(() => {
+    loadData();
 
-    if (error) {
-      console.error('loadCSUsers:', error);
-      return;
-    }
+    const channel = supabase.channel('admin-dashboard-queues').on('postgres_changes', { event: '*', schema: 'public', table: 'queues' }, loadQueues).subscribe();
 
-    setCsUsers(data || []);
-  }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   async function refreshData() {
     setRefreshing(true);
 
-    await Promise.all([loadQueues(), loadCSUsers()]);
+    try {
+      await loadQueues();
 
-    setRefreshing(false);
-
-    Swal.fire({
-      icon: 'success',
-      title: 'Data diperbarui',
-      timer: 1200,
-      showConfirmButton: false,
-    });
+      Swal.fire({
+        icon: 'success',
+        title: 'Data diperbarui',
+        timer: 1200,
+        showConfirmButton: false,
+      });
+    } catch (error) {
+      console.error('Gagal memperbarui data:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Memperbarui', text: error.message || 'Terjadi kesalahan.' });
+    } finally {
+      setRefreshing(false);
+    }
   }
-
-  const csMap = useMemo(() => {
-    const map = {};
-
-    csUsers.forEach((cs) => {
-      map[cs.id] = cs.username;
-    });
-
-    return map;
-  }, [csUsers]);
 
   const todayKey = getTodayKey();
 
@@ -383,6 +208,8 @@ export default function AdminDashboard() {
     });
   }, [period, todayQueues, queues, selectedMonth]);
 
+  const chartMax = Math.max(...chartData.map((item) => item.count), 1);
+
   const monitoringQueues = useMemo(() => {
     return [...todayQueues].sort((a, b) => {
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
@@ -437,7 +264,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between" data-aos="fade-down">
         <div>
           <p className="text-sm font-medium text-blue-700">Administrator</p>
@@ -458,7 +284,6 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* STATISTICS */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total Hari Ini" value={totalToday} subtitle={formatDate(new Date())} icon={Activity} iconClass="bg-blue-100 text-blue-700" />
 
@@ -469,8 +294,7 @@ export default function AdminDashboard() {
         <StatCard title="Selesai Hari Ini" value={doneCount} subtitle="Antrean telah selesai" icon={CheckCircle2} iconClass="bg-emerald-100 text-emerald-700" />
       </div>
 
-      {/* TOTAL ALL */}
-      <div className="rounded-2xl bg-gradient-to-r from-[#123b78] via-[#0f356d] to-[#092b5c] p-6 text-white shadow-lg" data-aos="fade-up">
+      <div className="rounded-2xl bg-[#123b78] p-6 text-white shadow-sm" data-aos="fade-up">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-blue-100">{period === 'month' ? 'Total Antrean Bulan Dipilih' : 'Total Seluruh Antrean'}</p>
@@ -486,13 +310,12 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* CHART */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-aos="fade-up">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Grafik Antrean</h2>
 
-            <p className="mt-1 text-sm text-slate-500">Klik titik grafik untuk melihat jumlah antrean.</p>
+            <p className="mt-1 text-sm text-slate-500">Ringkasan jumlah antrean berdasarkan waktu.</p>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -525,71 +348,27 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="h-[330px] w-full">
+        <div className="h-65 w-full">
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={chartData}
-                margin={{
-                  top: 10,
-                  right: 15,
-                  left: -10,
-                  bottom: 5,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <div className="flex h-full items-end gap-2 border-b border-slate-200 px-2 pb-8 pt-4">
+              {chartData.map((item) => {
+                const height = item.count === 0 ? 4 : Math.max(12, (item.count / chartMax) * 100);
 
-                <XAxis
-                  dataKey="label"
-                  tick={{
-                    fontSize: 12,
-                  }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-
-                <YAxis
-                  allowDecimals={false}
-                  tick={{
-                    fontSize: 12,
-                  }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-
-                <Tooltip
-                  formatter={(value) => [`${value} antrean`, 'Jumlah']}
-                  labelFormatter={(label) => `Waktu: ${label}`}
-                  contentStyle={{
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.08)',
-                  }}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#123b78"
-                  strokeWidth={3}
-                  dot={{
-                    r: 4,
-                    strokeWidth: 2,
-                    fill: '#ffffff',
-                  }}
-                  activeDot={{
-                    r: 7,
-                  }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                return (
+                  <div key={item.label} className="group relative flex h-full min-w-0 flex-1 items-end justify-center">
+                    <div className="absolute bottom-full mb-2 hidden rounded-md bg-slate-800 px-2 py-1 text-xs text-white group-hover:block">{item.count} antrean</div>
+                    <div className="w-full max-w-10 rounded-t-md bg-blue-700 transition-[height] duration-300 group-hover:bg-blue-500" style={{ height: `${height}%` }} title={`${item.label}: ${item.count} antrean`} />
+                    <span className="absolute top-full mt-2 truncate text-[10px] text-slate-400 sm:text-xs">{item.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">Belum ada data grafik.</div>
           )}
         </div>
       </div>
 
-      {/* MONITORING */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm" data-aos="fade-up">
         <div className="flex flex-col gap-2 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -601,7 +380,6 @@ export default function AdminDashboard() {
           <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">{monitoringQueues.length} data</span>
         </div>
 
-        {/* DESKTOP TABLE */}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full">
             <thead>
@@ -613,10 +391,6 @@ export default function AdminDashboard() {
                 <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500">Nasabah</th>
 
                 <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500">Waktu Masuk</th>
-
-                <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500">CS</th>
-
-                <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500">Estimasi</th>
 
                 <th className="px-5 py-4 text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
               </tr>
@@ -636,10 +410,6 @@ export default function AdminDashboard() {
 
                     <td className="px-5 py-4 text-sm text-slate-500">{formatTime(queue.created_at)}</td>
 
-                    <td className="px-5 py-4 text-sm text-slate-500">{queue.cs_id ? csMap[queue.cs_id] || '-' : '-'}</td>
-
-                    <td className="px-5 py-4 text-sm text-slate-500">{queue.estimated_time ? `${queue.estimated_time} menit` : '-'}</td>
-
                     <td className="px-5 py-4">
                       <StatusBadge status={queue.status} />
                     </td>
@@ -656,7 +426,6 @@ export default function AdminDashboard() {
           </table>
         </div>
 
-        {/* MOBILE */}
         <div className="divide-y divide-slate-100 md:hidden">
           {paginatedQueues.length > 0 ? (
             paginatedQueues.map((queue, index) => (
@@ -683,18 +452,6 @@ export default function AdminDashboard() {
 
                     <span className="text-sm text-slate-600">{formatTime(queue.created_at)}</span>
                   </div>
-
-                  <div className="flex justify-between gap-4">
-                    <span className="text-xs text-slate-400">CS</span>
-
-                    <span className="text-sm text-slate-600">{queue.cs_id ? csMap[queue.cs_id] || '-' : '-'}</span>
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-                    <span className="text-xs text-slate-400">Estimasi</span>
-
-                    <span className="text-sm text-slate-600">{queue.estimated_time ? `${queue.estimated_time} menit` : '-'}</span>
-                  </div>
                 </div>
               </div>
             ))
@@ -703,7 +460,6 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* PAGINATION */}
         {monitoringQueues.length > 0 && (
           <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
@@ -720,7 +476,7 @@ export default function AdminDashboard() {
                 <ChevronLeft size={17} />
               </button>
 
-              <span className="min-w-[80px] text-center text-sm font-medium text-slate-600">
+              <span className="min-w-20 text-center text-sm font-medium text-slate-600">
                 {currentPage} / {totalPages}
               </span>
 

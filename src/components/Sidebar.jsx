@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShieldCheck, Headset, Settings, X, LogOut, ListOrdered, Users } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, X, ListOrdered, LogOut, Settings } from 'lucide-react';
 
 import Swal from 'sweetalert2';
 
@@ -11,13 +11,7 @@ export default function Sidebar({ open = false, onClose }) {
 
   const role = user?.role;
 
-  // =====================================================
-  // MENU
-  // =====================================================
-
   const menuItems = [];
-
-  // SECURITY
   if (role === 'security') {
     menuItems.push({
       label: 'Dashboard',
@@ -25,17 +19,6 @@ export default function Sidebar({ open = false, onClose }) {
       icon: ShieldCheck,
     });
   }
-
-  // CS
-  if (role === 'cs') {
-    menuItems.push({
-      label: 'Dashboard',
-      path: '/cs',
-      icon: Headset,
-    });
-  }
-
-  // ADMIN
   if (role === 'admin') {
     menuItems.push(
       {
@@ -48,17 +31,8 @@ export default function Sidebar({ open = false, onClose }) {
         path: '/admin/queues',
         icon: ListOrdered,
       },
-      {
-        label: 'Pegawai',
-        path: '/admin/employees',
-        icon: Users,
-      },
     );
   }
-
-  // =====================================================
-  // LOGOUT
-  // =====================================================
 
   async function handleLogout() {
     const result = await Swal.fire({
@@ -82,20 +56,7 @@ export default function Sidebar({ open = false, onClose }) {
     }
 
     try {
-      Swal.fire({
-        title: 'Logout...',
-        text: 'Sedang keluar dari sistem',
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        didOpen: () => {
-          Swal.showLoading();
-        },
-      });
-
-      await logout();
-
-      Swal.close();
-
+      logout();
       await Swal.fire({
         icon: 'success',
         title: 'Berhasil Logout',
@@ -116,22 +77,13 @@ export default function Sidebar({ open = false, onClose }) {
     }
   }
 
-  // =====================================================
-  // ROLE LABEL
-  // =====================================================
-
   const roleLabel = {
     security: 'Security',
-    cs: 'Customer Service',
     admin: 'Administrator',
   };
 
   return (
     <>
-      {/* =====================================================
-          MOBILE OVERLAY
-      ====================================================== */}
-
       <div
         onClick={onClose}
         className={`
@@ -151,10 +103,6 @@ export default function Sidebar({ open = false, onClose }) {
         `}
       />
 
-      {/* =====================================================
-          SIDEBAR
-      ====================================================== */}
-
       <aside
         className={`
           fixed
@@ -172,10 +120,7 @@ export default function Sidebar({ open = false, onClose }) {
 
           overflow-hidden
 
-          bg-gradient-to-b
-          from-[#123b78]
-          via-[#0f356d]
-          to-[#092b5c]
+          bg-[#123b78]
 
           shadow-[8px_0_30px_rgba(15,53,109,0.22)]
 
@@ -188,10 +133,6 @@ export default function Sidebar({ open = false, onClose }) {
           md:translate-x-0
         `}
       >
-        {/* ===================================================
-            DECORATIVE BACKGROUND
-        ==================================================== */}
-
         <div
           className="
             absolute
@@ -230,10 +171,6 @@ export default function Sidebar({ open = false, onClose }) {
           "
         />
 
-        {/* ===================================================
-            LOGO / HEADER
-        ==================================================== */}
-
         <div
           className="
             relative
@@ -254,8 +191,6 @@ export default function Sidebar({ open = false, onClose }) {
           "
         >
           <div className="flex items-center gap-3">
-            {/* LOGO */}
-
             <div
               className="
                 w-10
@@ -282,8 +217,6 @@ export default function Sidebar({ open = false, onClose }) {
               />
             </div>
 
-            {/* TITLE */}
-
             <div>
               <h2
                 className="
@@ -306,8 +239,6 @@ export default function Sidebar({ open = false, onClose }) {
               </p>
             </div>
           </div>
-
-          {/* CLOSE MOBILE */}
 
           <button
             type="button"
@@ -337,10 +268,6 @@ export default function Sidebar({ open = false, onClose }) {
           </button>
         </div>
 
-        {/* ===================================================
-            USER INFO
-        ==================================================== */}
-
         <div
           className="
             relative
@@ -357,7 +284,7 @@ export default function Sidebar({ open = false, onClose }) {
             className="
               rounded-2xl
 
-              bg-white/[0.08]
+              bg-white/8
 
               border
               border-white/10
@@ -399,8 +326,6 @@ export default function Sidebar({ open = false, onClose }) {
             </p>
 
             <div className="flex items-center gap-2 mt-2">
-              {/* STATUS DOT */}
-
               <span
                 className="
                   w-1.5
@@ -430,10 +355,6 @@ export default function Sidebar({ open = false, onClose }) {
             </div>
           </div>
         </div>
-
-        {/* ===================================================
-            MENU
-        ==================================================== */}
 
         <nav
           className="
@@ -499,9 +420,7 @@ export default function Sidebar({ open = false, onClose }) {
                     ${
                       isActive
                         ? `
-                          bg-gradient-to-r
-                          from-blue-500/30
-                          to-blue-400/10
+                          bg-blue-500/20
 
                           text-white
 
@@ -524,8 +443,6 @@ export default function Sidebar({ open = false, onClose }) {
                 >
                   {({ isActive }) => (
                     <>
-                      {/* ACTIVE INDICATOR */}
-
                       {isActive && (
                         <span
                           className="
@@ -540,16 +457,12 @@ export default function Sidebar({ open = false, onClose }) {
 
                             rounded-r-full
 
-                            bg-gradient-to-b
-                            from-yellow-300
-                            to-yellow-500
+                            bg-yellow-400
 
                             shadow-[0_0_10px_rgba(250,204,21,0.45)]
                           "
                         />
                       )}
-
-                      {/* ICON */}
 
                       <div
                         className={`
@@ -571,7 +484,7 @@ export default function Sidebar({ open = false, onClose }) {
                                 text-yellow-300
                               `
                               : `
-                                bg-white/[0.04]
+                                bg-white/4
                                 text-blue-200/70
 
                                 group-hover:bg-white/10
@@ -583,8 +496,6 @@ export default function Sidebar({ open = false, onClose }) {
                         <Icon size={18} strokeWidth={2} />
                       </div>
 
-                      {/* LABEL */}
-
                       <span>{item.label}</span>
                     </>
                   )}
@@ -593,10 +504,6 @@ export default function Sidebar({ open = false, onClose }) {
             })}
           </div>
         </nav>
-
-        {/* ===================================================
-            FOOTER
-        ==================================================== */}
 
         <div
           className="
@@ -612,8 +519,6 @@ export default function Sidebar({ open = false, onClose }) {
             shrink-0
           "
         >
-          {/* LOGOUT */}
-
           <button
             type="button"
             onClick={handleLogout}
@@ -664,8 +569,6 @@ export default function Sidebar({ open = false, onClose }) {
 
             <span>Logout</span>
           </button>
-
-          {/* VERSION */}
 
           <div
             className="

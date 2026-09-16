@@ -7,9 +7,6 @@ import Swal from 'sweetalert2';
 
 import { Eye, EyeOff, LockKeyhole, UserRound, ArrowRight } from 'lucide-react';
 
-import AOS from 'aos';
-import 'aos/dist/aos.css';
-
 import logo from '../../assets/logo.png';
 
 export default function Login() {
@@ -18,43 +15,18 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { login } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  // =========================
-  // AOS INITIALIZATION
-  // =========================
   useEffect(() => {
-    AOS.init({
-      duration: 850,
-      easing: 'ease-out-cubic',
-      once: true,
-      offset: 70,
-      delay: 0,
-    });
-
-    // Refresh AOS ketika ukuran layar berubah
-    const handleResize = () => {
-      AOS.refresh();
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  // =========================
-  // LOGIN
-  // =========================
-  // =========================
-  // LOGIN
-  // =========================
+    if (user?.role === 'admin') {
+      navigate('/admin', { replace: true });
+    } else if (user?.role === 'security') {
+      navigate('/security', { replace: true });
+    }
+  }, [user, navigate]);
   async function handleLogin(e) {
     e.preventDefault();
-
-    // Validasi input
     if (!username.trim() || !password.trim()) {
       Swal.fire({
         icon: 'warning',
@@ -72,10 +44,6 @@ export default function Login() {
     try {
       const { data, error } = await supabase.from('users').select('*').eq('username', username.trim()).eq('password', password).single();
 
-      // ==========================================
-      // USERNAME / PASSWORD SALAH
-      // ==========================================
-
       if (error || !data) {
         Swal.fire({
           icon: 'error',
@@ -88,57 +56,30 @@ export default function Login() {
         return;
       }
 
-      // ==========================================
-      // CEK DAN BUAT SESSION DEVICE
-      // ==========================================
-
-      const loginResult = await login(data);
-
-      // ==========================================
-      // AKUN SEDANG DIGUNAKAN DI DEVICE LAIN
-      // ==========================================
-
-      if (!loginResult?.success && loginResult?.code === 'ACCOUNT_ALREADY_ACTIVE') {
+      if (!['admin', 'security'].includes(data.role)) {
         await Swal.fire({
-          icon: 'warning',
-          title: 'Akun Sedang Digunakan',
-          html: `
-          <div style="font-size:14px; line-height:1.7;">
-            Akun <b>${data.username}</b> sedang digunakan
-            pada perangkat lain.
-            <br /><br />
-            Silakan <b>logout terlebih dahulu</b> dari
-            perangkat sebelumnya sebelum login kembali.
-          </div>
-        `,
+          icon: 'error',
+          title: 'Role Tidak Dikenali',
+          text: 'Akun ini bukan akun admin atau security.',
           confirmButtonColor: '#133A6D',
           confirmButtonText: 'Mengerti',
-          allowOutsideClick: false,
-          allowEscapeKey: false,
         });
-
         return;
       }
 
-      // ==========================================
-      // SESSION ERROR
-      // ==========================================
+      const loginResult = await login(data);
 
       if (!loginResult?.success) {
         await Swal.fire({
           icon: 'error',
           title: 'Login Tidak Berhasil',
-          text: loginResult?.message || 'Tidak dapat membuat sesi login. Silakan coba lagi.',
+          text: loginResult?.message || 'Login tidak dapat dilakukan. Silakan coba lagi.',
           confirmButtonColor: '#133A6D',
           confirmButtonText: 'Coba Lagi',
         });
 
         return;
       }
-
-      // ==========================================
-      // LOGIN BERHASIL
-      // ==========================================
 
       await Swal.fire({
         icon: 'success',
@@ -150,18 +91,11 @@ export default function Login() {
         allowEscapeKey: false,
       });
 
-      // ==========================================
-      // REDIRECT BERDASARKAN ROLE
-      // ==========================================
-
       if (data.role === 'security') {
         navigate('/security');
-      } else if (data.role === 'cs') {
-        navigate('/cs');
       } else if (data.role === 'admin') {
         navigate('/admin');
       } else {
-        // Role tidak valid
         await Swal.fire({
           icon: 'error',
           title: 'Role Tidak Dikenali',
@@ -187,9 +121,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full bg-slate-100 flex items-center justify-center p-0 sm:p-3 md:p-5 lg:p-8 xl:p-10">
-      {/* =========================
-          MAIN CONTAINER
-      ========================== */}
       <div
         className="
           relative
@@ -201,21 +132,18 @@ export default function Login() {
 
           min-h-screen
 
-          sm:min-h-[650px]
+          sm:min-h-162.5
           sm:max-h-none
           sm:rounded-2xl
 
           md:rounded-3xl
 
-          lg:min-h-[650px]
+          lg:min-h-162.5
 
-          xl:min-h-[700px]
+          xl:min-h-175
         "
       >
-        <div className="flex flex-col lg:flex-row min-h-screen sm:min-h-[650px] lg:min-h-[650px] xl:min-h-[700px]">
-          {/* =====================================================
-              LEFT SIDE - LOGIN
-          ====================================================== */}
+        <div className="flex flex-col lg:flex-row min-h-screen sm:min-h-162.5 lg:min-h-162.5 xl:min-h-175">
           <section
             className="
               relative
@@ -238,7 +166,6 @@ export default function Login() {
               xl:px-16
             "
           >
-            {/* Background decorative shape untuk mobile */}
             <div
               className="
                 absolute
@@ -267,9 +194,6 @@ export default function Login() {
               "
             />
 
-            {/* =========================
-                LOGIN CONTENT
-            ========================== */}
             <div
               className="
                 relative
@@ -281,12 +205,8 @@ export default function Login() {
               data-aos="fade-right"
               data-aos-duration="900"
             >
-              {/* =========================
-                  LOGO
-              ========================== */}
               <div className="mb-8 sm:mb-10" data-aos="zoom-in" data-aos-duration="700">
                 <div className="flex items-center gap-3">
-                  {/* Logo */}
                   <div
                     className="
                       w-12
@@ -313,7 +233,6 @@ export default function Login() {
                     />
                   </div>
 
-                  {/* Brand */}
                   <div className="min-w-0">
                     <h1
                       className="
@@ -337,9 +256,6 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* =========================
-                  HEADING
-              ========================== */}
               <div className="mb-7 sm:mb-8" data-aos="fade-up" data-aos-delay="150">
                 <p
                   className="
@@ -390,13 +306,7 @@ export default function Login() {
                 </p>
               </div>
 
-              {/* =========================
-                  LOGIN FORM
-              ========================== */}
               <form onSubmit={handleLogin} className="space-y-4 sm:space-y-5">
-                {/* =========================
-                    USERNAME
-                ========================== */}
                 <div data-aos="fade-up" data-aos-delay="250">
                   <label
                     htmlFor="username"
@@ -412,7 +322,6 @@ export default function Login() {
                   </label>
 
                   <div className="relative group">
-                    {/* Icon */}
                     <UserRound
                       size={19}
                       strokeWidth={1.8}
@@ -485,9 +394,6 @@ export default function Login() {
                   </div>
                 </div>
 
-                {/* =========================
-                    PASSWORD
-                ========================== */}
                 <div data-aos="fade-up" data-aos-delay="350">
                   <label
                     htmlFor="password"
@@ -503,7 +409,6 @@ export default function Login() {
                   </label>
 
                   <div className="relative group">
-                    {/* Icon */}
                     <LockKeyhole
                       size={19}
                       strokeWidth={1.8}
@@ -574,7 +479,6 @@ export default function Login() {
                       "
                     />
 
-                    {/* Show / Hide Password */}
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
@@ -611,9 +515,6 @@ export default function Login() {
                   </div>
                 </div>
 
-                {/* =========================
-                    LOGIN BUTTON
-                ========================== */}
                 <div data-aos="fade-up" data-aos-delay="450">
                   <button
                     type="submit"
@@ -667,7 +568,6 @@ export default function Login() {
                       disabled:hover:translate-y-0
                     "
                   >
-                    {/* Shine effect */}
                     <span
                       className="
                         absolute
@@ -728,9 +628,6 @@ export default function Login() {
                 </div>
               </form>
 
-              {/* =========================
-                  FOOTER
-              ========================== */}
               <div
                 className="
                   mt-8
@@ -802,9 +699,6 @@ export default function Login() {
             </div>
           </section>
 
-          {/* =====================================================
-              RIGHT SIDE - BRANDING
-          ====================================================== */}
           <section
             className="
               hidden
@@ -826,10 +720,6 @@ export default function Login() {
               xl:p-12
             "
           >
-            {/* =========================
-                BACKGROUND CIRCLES
-            ========================== */}
-
             <div
               className="
                 absolute
@@ -863,8 +753,8 @@ export default function Login() {
                 w-96
                 h-96
 
-                xl:w-[500px]
-                xl:h-[500px]
+                xl:w-125
+                xl:h-125
 
                 rounded-full
 
@@ -876,7 +766,6 @@ export default function Login() {
               "
             />
 
-            {/* Small circle */}
             <div
               className="
                 absolute
@@ -919,9 +808,6 @@ export default function Login() {
               "
             />
 
-            {/* =========================
-                YELLOW SIDE ACCENT
-            ========================== */}
             <div
               className="
                 absolute
@@ -938,9 +824,6 @@ export default function Login() {
               "
             />
 
-            {/* =========================
-                RIGHT CONTENT
-            ========================== */}
             <div
               className="
                 relative
@@ -952,9 +835,6 @@ export default function Login() {
               data-aos="fade-left"
               data-aos-duration="1000"
             >
-              {/* =========================
-                  LOGO
-              ========================== */}
               <div
                 className="
                   w-20
@@ -989,9 +869,6 @@ export default function Login() {
                 />
               </div>
 
-              {/* =========================
-                  BRAND
-              ========================== */}
               <p
                 className="
                   text-[#F5B726]
@@ -1013,9 +890,6 @@ export default function Login() {
                 BANK MANDIRI TANJUNG ENIM
               </p>
 
-              {/* =========================
-                  TITLE
-              ========================== */}
               <h2
                 className="
                   text-3xl
@@ -1037,9 +911,6 @@ export default function Login() {
                 <span className="text-[#F5B726]">Cepat & Teratur.</span>
               </h2>
 
-              {/* =========================
-                  DESCRIPTION
-              ========================== */}
               <p
                 className="
                   mt-5
@@ -1060,9 +931,6 @@ export default function Login() {
                 Sistem manajemen antrian nasabah untuk membantu petugas memberikan pelayanan yang lebih efektif, terorganisir, dan nyaman.
               </p>
 
-              {/* =========================
-                  FEATURE CARDS
-              ========================== */}
               <div
                 className="
                   mt-8
@@ -1075,7 +943,6 @@ export default function Login() {
                   xl:gap-4
                 "
               >
-                {/* Card 01 */}
                 <div
                   className="
                     rounded-2xl
@@ -1131,7 +998,6 @@ export default function Login() {
                   </p>
                 </div>
 
-                {/* Card 02 */}
                 <div
                   className="
                     rounded-2xl
@@ -1188,9 +1054,6 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* =========================
-                  STATUS
-              ========================== */}
               <div
                 className="
                   mt-6

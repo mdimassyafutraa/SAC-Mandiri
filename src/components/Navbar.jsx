@@ -1,24 +1,8 @@
-import { useState } from 'react';
-import { Menu, X, LogOut, UserCircle } from 'lucide-react';
+import { Menu, X, UserCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ onMenuClick, sidebarOpen }) {
-  const { user, logout } = useAuth();
-
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  async function handleLogout() {
-    if (loggingOut) return;
-
-    setLoggingOut(true);
-
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-      setLoggingOut(false);
-    }
-  }
+  const { user } = useAuth();
 
   return (
     <header
@@ -43,13 +27,7 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
         md:ml-64
       "
     >
-      {/* =====================================================
-          LEFT
-      ====================================================== */}
-
       <div className="flex items-center min-w-0">
-        {/* Hamburger Mobile */}
-
         <button
           type="button"
           onClick={onMenuClick}
@@ -75,10 +53,7 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
           {sidebarOpen ? <X size={23} /> : <Menu size={23} />}
         </button>
 
-        {/* Title */}
-
         <div className="ml-2 sm:ml-3 min-w-0">
-          {/* HP */}
           <h1
             className="
     md:hidden
@@ -91,7 +66,6 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
             SAC
           </h1>
 
-          {/* TABLET / DESKTOP */}
           <h1
             className="
     hidden
@@ -111,10 +85,6 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
         </div>
       </div>
 
-      {/* =====================================================
-          RIGHT
-      ====================================================== */}
-
       <div
         className="
           flex
@@ -124,16 +94,14 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
           shrink-0
         "
       >
-        {/* User */}
-
         <div
           className="
             hidden
             sm:flex
             items-center
             gap-2
-            max-w-[160px]
-            md:max-w-[220px]
+            max-w-40
+            md:max-w-55
           "
         >
           <div
@@ -176,12 +144,10 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
           </div>
         </div>
 
-        {/* Username Mobile */}
-
         <span
           className="
             sm:hidden
-            max-w-[90px]
+            max-w-22.5
             text-xs
             font-semibold
             text-slate-700

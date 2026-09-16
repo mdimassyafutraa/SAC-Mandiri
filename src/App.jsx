@@ -1,13 +1,11 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import Login from './pages/auth/Login';
 
 import SecurityDashboard from './pages/security/Dashboard';
-import CSDashboard from './pages/cs/Dashboard';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AllQueues from './pages/admin/AllQueues';
-import Employees from './pages/admin/Employees';
 
 import ProtectedRoute from './routes/ProtectedRoute';
 import Layout from './components/Layout';
@@ -15,10 +13,10 @@ import Layout from './components/Layout';
 function App() {
   return (
     <Routes>
-      {/* LOGIN */}
+      
       <Route path="/" element={<Login />} />
 
-      {/* SECURITY */}
+      
       <Route
         path="/security"
         element={
@@ -30,19 +28,7 @@ function App() {
         }
       />
 
-      {/* CS */}
-      <Route
-        path="/cs"
-        element={
-          <ProtectedRoute role="cs">
-            <Layout>
-              <CSDashboard />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-
-      {/* ADMIN - DASHBOARD */}
+      
       <Route
         path="/admin"
         element={
@@ -54,7 +40,7 @@ function App() {
         }
       />
 
-      {/* ADMIN - SELURUH ANTRIAN */}
+      
       <Route
         path="/admin/queues"
         element={
@@ -66,17 +52,7 @@ function App() {
         }
       />
 
-      {/* ADMIN - PEGAWAI */}
-      <Route
-        path="/admin/employees"
-        element={
-          <ProtectedRoute role="admin">
-            <Layout>
-              <Employees />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

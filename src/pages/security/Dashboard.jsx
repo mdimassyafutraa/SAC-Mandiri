@@ -1,326 +1,77 @@
-import { useEffect, useMemo, useState } from 'react';
-import { UserRound, Users, Clock3, Ticket, RefreshCw, CheckCircle2, Timer, Activity } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, Phone, RefreshCw, Ticket, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
 
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
-
-const TIME_ZONE = 'Asia/Jakarta';
+import { formatTime, getJakartaStartIso } from '../../utils/date';
 
 export default function SecurityDashboard() {
   const { user } = useAuth();
-
   const [name, setName] = useState('');
-  const [queue, setQueue] = useState(null);
-
-  const [servingQueues, setServingQueues] = useState([]);
-  const [waitingQueues, setWaitingQueues] = useState([]);
-  const [csUsers, setCsUsers] = useState([]);
-
-  const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(true);
-
-  // Waktu sekarang untuk countdown
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    AOS.init({
-      duration: 600,
-      once: true,
-    });
-  }, []);
-
-  // ============================================
-  // TIMER COUNTDOWN
-  // ============================================
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  // ============================================
-  // HELPER TIMEZONE
-  // ============================================
-
-  function parseQueueDate(date) {
-    if (!date) return null;
-
-    const value = String(date);
-
-    // Kalau sudah memiliki timezone
-    if (value.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(value)) {
-      const parsed = new Date(value);
-
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    // Kalau timestamp tanpa timezone,
-    // anggap sebagai WIB
-    const parsed = new Date(`${value}+07:00`);
-
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  function formatTime(date) {
-    const parsed = parseQueueDate(date);
-
-    if (!parsed) return '-';
-
-    return parsed.toLocaleTimeString('id-ID', {
-      timeZone: TIME_ZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  }
-
-  function formatShortTime(date) {
-    const parsed = parseQueueDate(date);
-
-    if (!parsed) return '-';
-
-    return parsed.toLocaleTimeString('id-ID', {
-      timeZone: TIME_ZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
-  function formatDate(date) {
-    const parsed = parseQueueDate(date);
-
-    if (!parsed) return '-';
-
-    return parsed.toLocaleDateString('id-ID', {
-      timeZone: TIME_ZONE,
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  }
-
-  // ============================================
-  // TANGGAL HARI INI
-  // ============================================
-
-  const todayStart = useMemo(() => {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(new Date());
-
-    const year = parts.find((x) => x.type === 'year')?.value;
-    const month = parts.find((x) => x.type === 'month')?.value;
-    const day = parts.find((x) => x.type === 'day')?.value;
-
-    return new Date(`${year}-${month}-${day}T00:00:00+07:00`).toISOString();
-  }, []);
-
-  // ============================================
-  // LOAD DATA CS
-  // ============================================
-
-  async function loadCSUsers() {
-    const { data, error } = await supabase.from('users').select('id, username, role').eq('role', 'cs').order('username', {
-      ascending: true,
-    });
-
-    if (error) {
-      console.error('Gagal mengambil data CS:', error);
-      return;
-    }
-
-    setCsUsers(data || []);
-  }
-
-  // ============================================
-  // LOAD ANTRIAN
-  // ============================================
+  const [queues, setQueues] = useState([]);
+  const [calledQueue, setCalledQueue] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [callingId, setCallingId] = useState(null);
+  const [finishing, setFinishing] = useState(false);
 
   async function loadQueues() {
-    setLoadingData(true);
+    setLoading(true);
 
-    const { data, error } = await supabase.from('queues').select('*').gte('created_at', todayStart).order('created_at', {
-      ascending: true,
-    });
+    try {
+      const { data, error } = await supabase.from('queues').select('*').gte('created_at', getJakartaStartIso()).order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('Gagal mengambil data antrian:', error);
-      setLoadingData(false);
-      return;
+      if (error) throw error;
+
+      const loadedQueues = data || [];
+      setQueues(loadedQueues);
+      setCalledQueue(loadedQueues.find((queue) => queue.status === 'serving') || null);
+    } catch (error) {
+      console.error('Gagal mengambil antrean:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Memuat Antrean', text: error.message || 'Terjadi kesalahan saat memuat antrean.' });
+    } finally {
+      setLoading(false);
     }
-
-    const queues = data || [];
-
-    const waiting = queues.filter((item) => item.status === 'waiting');
-
-    const serving = queues.filter((item) => item.status === 'serving');
-
-    setWaitingQueues(waiting);
-    setServingQueues(serving);
-
-    setLoadingData(false);
   }
 
-  // ============================================
-  // INITIAL LOAD
-  // ============================================
-
   useEffect(() => {
-    loadCSUsers();
     loadQueues();
-  }, [todayStart]);
 
-  // ============================================
-  // REALTIME
-  // ============================================
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('security-queues-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'queues',
-        },
-        () => {
-          loadQueues();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel('security-queues-realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'queues' }, loadQueues).subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [todayStart]);
-
-  // ============================================
-  // CARI NAMA CS
-  // ============================================
-
-  function getCSName(csId) {
-    if (!csId) return '-';
-
-    const cs = csUsers.find((item) => String(item.id) === String(csId));
-
-    return cs?.username || '-';
-  }
-
-  // ============================================
-  // GENERATE NOMOR ANTRIAN
-  // ============================================
+  }, []);
 
   async function generateQueueNumber() {
-    const { data, error } = await supabase
-      .from('queues')
-      .select('queue_number, created_at')
-      .gte('created_at', todayStart)
-      .order('created_at', {
-        ascending: false,
-      })
-      .limit(1);
+    const { data, error } = await supabase.from('queues').select('queue_number').gte('created_at', getJakartaStartIso()).order('created_at', { ascending: false }).limit(1);
 
-    if (error) {
-      console.error('Gagal mendapatkan nomor antrian terakhir:', error);
+    if (error) throw error;
 
-      throw error;
-    }
+    const match = String(data?.[0]?.queue_number || '').match(/(\d+)$/);
+    const nextNumber = match ? Number(match[1]) + 1 : 1;
 
-    if (!data || data.length === 0) {
-      return 'A001';
-    }
-
-    const lastNumber = data[0].queue_number;
-
-    const match = String(lastNumber).match(/(\d+)$/);
-
-    if (!match) {
-      return 'A001';
-    }
-
-    const number = Number(match[1]) + 1;
-
-    return `A${String(number).padStart(3, '0')}`;
+    return `A${String(nextNumber).padStart(3, '0')}`;
   }
 
-  // ============================================
-  // CEK JAM OPERASIONAL
-  // 08:00 - 15:00 WIB
-  // ============================================
-
-  // PROSES DEVELOP ///
-
-  // function isBankOpen() {
-  //   const formatter = new Intl.DateTimeFormat('en-GB', {
-  //     timeZone: TIME_ZONE,
-  //     hour: '2-digit',
-  //     minute: '2-digit',
-  //     hour12: false,
-  //   });
-
-  //   const parts = formatter.formatToParts(new Date());
-
-  //   const hour = Number(parts.find((x) => x.type === 'hour')?.value);
-
-  //   const minute = Number(parts.find((x) => x.type === 'minute')?.value);
-
-  //   const totalMinutes = hour * 60 + minute;
-
-  //   return totalMinutes >= 8 * 60 && totalMinutes < 15 * 60;
-  // }
-
-  // ============================================
-  // TAMBAH ANTRIAN
-  // ============================================
-
-  async function createQueue(e) {
-    e.preventDefault();
-
+  async function createQueue(event) {
+    event.preventDefault();
     const customerName = name.trim();
 
     if (!customerName) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Nama nasabah belum diisi',
-        text: 'Silakan masukkan nama nasabah terlebih dahulu.',
-        confirmButtonColor: '#0b57d0',
-      });
-
+      Swal.fire({ icon: 'warning', title: 'Nama Belum Diisi', text: 'Masukkan nama nasabah terlebih dahulu.' });
       return;
     }
 
-    // PROSES DEVELOP /////////
-
-    // if (!isBankOpen()) {
-    //   Swal.fire({
-    //     icon: 'info',
-    //     title: 'Layanan antrian ditutup',
-    //     text: 'Pengambilan nomor antrian hanya dapat dilakukan pada pukul 08:00 - 15:00 WIB.',
-    //     confirmButtonColor: '#0b57d0',
-    //   });
-
-    //   return;
-    // }
+    setSaving(true);
 
     try {
-      setLoading(true);
-
-      const queueNumber = await generateQueueNumber();
-
       const { data, error } = await supabase
         .from('queues')
         .insert({
-          queue_number: queueNumber,
+          queue_number: await generateQueueNumber(),
           customer_name: customerName,
           status: 'waiting',
           security_id: user?.id || null,
@@ -329,1686 +80,193 @@ export default function SecurityDashboard() {
         .select()
         .single();
 
+      if (error) throw error;
+
+      setName('');
+      await loadQueues();
+      Swal.fire({ icon: 'success', title: 'Nomor Berhasil Diambil', text: `${data.queue_number} untuk ${data.customer_name}`, confirmButtonColor: '#0b57d0' });
+    } catch (error) {
+      console.error('Gagal membuat antrean:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Mengambil Nomor', text: error.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function callQueue(queue) {
+    if (calledQueue && calledQueue.id !== queue.id) {
+      Swal.fire({ icon: 'warning', title: 'Masih Ada Nasabah Dipanggil', text: `Selesaikan panggilan ${calledQueue.queue_number} terlebih dahulu.` });
+      return;
+    }
+
+    const confirmation = await Swal.fire({
+      icon: 'question',
+      title: 'Panggil Nasabah?',
+      text: `${queue.queue_number} - ${queue.customer_name}`,
+      showCancelButton: true,
+      confirmButtonText: 'Panggil',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#0b57d0',
+    });
+
+    if (!confirmation.isConfirmed) return;
+
+    setCallingId(queue.id);
+
+    try {
+      const { data, error } = await supabase
+        .from('queues')
+        .update({ status: 'serving', started_at: new Date().toISOString(), security_id: user?.id || null })
+        .eq('id', queue.id)
+        .eq('status', 'waiting')
+        .select()
+        .single();
+
       if (error) {
-        throw error;
+        Swal.fire({ icon: 'error', title: 'Gagal Memanggil', text: 'Antrean mungkin sudah dipanggil petugas lain.' });
+        await loadQueues();
+        return;
       }
 
-      setQueue(data);
-      setName('');
-
+      setCalledQueue(data);
       await loadQueues();
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Nomor Antrian Berhasil',
-        html: `
-          <div style="font-size:16px">
-            Nasabah <b>${customerName}</b>
-            mendapatkan nomor antrian
-            <div style="
-              font-size:42px;
-              font-weight:800;
-              margin-top:12px;
-              color:#0b57d0;
-            ">
-              ${queueNumber}
-            </div>
-          </div>
-        `,
-        confirmButtonColor: '#0b57d0',
-      });
+      Swal.fire({ icon: 'success', title: 'Nasabah Dipanggil', text: `${data.queue_number} - ${data.customer_name}`, timer: 1800, showConfirmButton: false });
     } catch (error) {
-      console.error(error);
-
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal membuat antrian',
-        text: error?.message || 'Terjadi kesalahan saat membuat nomor antrian.',
-        confirmButtonColor: '#0b57d0',
-      });
+      console.error('Gagal memanggil nasabah:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Memanggil', text: error.message || 'Terjadi kesalahan saat memanggil nasabah.' });
+      await loadQueues();
     } finally {
-      setLoading(false);
+      setCallingId(null);
     }
   }
 
-  // ============================================
-  // COUNTDOWN
-  // ============================================
+  async function finishQueue() {
+    if (!calledQueue || finishing) return;
 
-  function getRemainingSeconds(item) {
-    if (!item?.started_at || !item?.estimated_time) {
-      return null;
+    setFinishing(true);
+
+    try {
+      const { error } = await supabase.from('queues').update({ status: 'done', finished_at: new Date().toISOString() }).eq('id', calledQueue.id).eq('status', 'serving');
+
+      if (error) throw error;
+
+      setCalledQueue(null);
+      await loadQueues();
+    } catch (error) {
+      console.error('Gagal menyelesaikan antrean:', error);
+      Swal.fire({ icon: 'error', title: 'Gagal Menyelesaikan', text: error.message || 'Terjadi kesalahan saat menyelesaikan antrean.' });
+    } finally {
+      setFinishing(false);
     }
-
-    const startedAt = parseQueueDate(item.started_at);
-
-    if (!startedAt) {
-      return null;
-    }
-
-    const totalMilliseconds = Number(item.estimated_time) * 60 * 1000;
-
-    if (totalMilliseconds <= 0) {
-      return null;
-    }
-
-    const finishTime = startedAt.getTime() + totalMilliseconds;
-
-    const remainingMilliseconds = Math.max(0, finishTime - now.getTime());
-
-    return Math.floor(remainingMilliseconds / 1000);
   }
 
-  // ============================================
-  // PROGRESS BAR
-  // ============================================
-
-  function getServiceProgress(item) {
-    if (!item?.started_at || !item?.estimated_time) {
-      return 0;
-    }
-
-    const startedAt = parseQueueDate(item.started_at);
-
-    if (!startedAt) {
-      return 0;
-    }
-
-    const totalMilliseconds = Number(item.estimated_time) * 60 * 1000;
-
-    if (totalMilliseconds <= 0) {
-      return 0;
-    }
-
-    const elapsedMilliseconds = now.getTime() - startedAt.getTime();
-
-    const progress = (elapsedMilliseconds / totalMilliseconds) * 100;
-
-    return Math.min(100, Math.max(0, progress));
-  }
-
-  // ============================================
-  // FORMAT COUNTDOWN
-  // ============================================
-
-  function formatCountdown(seconds) {
-    if (seconds === null || seconds === undefined) {
-      return '--:--';
-    }
-
-    const minutes = Math.floor(seconds / 60);
-
-    const remainingSeconds = seconds % 60;
-
-    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-  }
-
-  // ============================================
-  // STATISTIK
-  // ============================================
-
-  const waitingCount = waitingQueues.length;
-
-  const servingCount = servingQueues.length;
-
-  const totalToday = waitingQueues.length + servingQueues.length + 0;
-
-  // ============================================
-  // RENDER
-  // ============================================
+  const waitingQueues = queues.filter((queue) => queue.status === 'waiting');
 
   return (
     <div className="space-y-6">
-      {/* ========================================
-          HEADER
-      ======================================== */}
+      <div className="flex items-center justify-between border-b border-slate-200 pb-5">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">SAC</p>
+          <h1 className="mt-1 text-xl font-bold text-slate-900 md:text-2xl">Antrean Nasabah</h1>
+        </div>
+        <div className="hidden rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 sm:block">Petugas Security</div>
+      </div>
 
-      <div
-        data-aos="fade-down"
-        className="
-          rounded-3xl
-          bg-gradient-to-r
-          from-[#0b3b78]
-          via-[#1253a3]
-          to-[#0b3b78]
-          p-6
-          md:p-8
-          text-white
-          shadow-lg
-          relative
-          overflow-hidden
-        "
-      >
-        <div
-          className="
-          absolute
-          -right-16
-          -top-16
-          w-48
-          h-48
-          rounded-full
-          bg-white/10
-        "
-        />
-
-        <div
-          className="
-          absolute
-          -bottom-20
-          right-20
-          w-56
-          h-56
-          rounded-full
-          bg-[#ffd400]/10
-        "
-        />
-
-        <div className="relative z-10">
-          <div
-            className="
-            flex
-            flex-col
-            md:flex-row
-            md:items-center
-            md:justify-between
-            gap-4
-          "
-          >
-            <div>
-              <p
-                className="
-                text-blue-100
-                text-sm
-                mb-1
-              "
-              >
-                Sistem Antrian Customer Service
-              </p>
-
-              <h1
-                className="
-                text-2xl
-                md:text-3xl
-                font-bold
-              "
-              >
-                Dashboard Security
-              </h1>
-
-              <p
-                className="
-                text-blue-100
-                mt-2
-              "
-              >
-                Kelola nomor antrian nasabah dengan mudah dan cepat.
-              </p>
-            </div>
-
-            <div
-              className="
-              bg-white/10
-              backdrop-blur-md
-              border
-              border-white/20
-              rounded-2xl
-              px-5
-              py-3
-              flex
-              items-center
-              gap-3
-            "
-            >
-              <Clock3 size={22} />
-
+      <section className="relative overflow-hidden rounded-3xl border-2 border-blue-100 bg-white p-5 shadow-[0_16px_40px_rgba(37,99,235,0.10)] md:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-blue-50" />
+        <div className="relative">
+          <div className="mb-7 flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+                <Ticket size={24} />
+              </div>
               <div>
-                <p
-                  className="
-      text-xs
-      text-blue-100
-    "
-                >
-                  Waktu Sekarang
-                </p>
-
-                <p
-                  className="
-      font-semibold
-      tabular-nums
-    "
-                >
-                  {new Date().toLocaleTimeString('id-ID', {
-                    timeZone: 'Asia/Jakarta',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  })}{' '}
-                  WIB
-                </p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Mulai dari sini</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900 md:text-2xl">Ambil Nomor Antrian</h2>
+                <p className="mt-1 text-sm text-slate-500">Masukkan nama nasabah untuk membuat antrean baru.</p>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ========================================
-          STATISTIK
-      ======================================== */}
-
-      <div
-        className="
-        grid
-        grid-cols-2
-        lg:grid-cols-3
-        gap-4
-      "
-      >
-        {/* Menunggu */}
-        <div
-          data-aos="fade-up"
-          className="
-            bg-white
-            rounded-2xl
-            p-5
-            shadow-sm
-            border
-            border-slate-100
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-          "
-          >
-            <div>
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Menunggu
-              </p>
-
-              <p
-                className="
-                text-3xl
-                font-bold
-                text-slate-800
-                mt-1
-              "
-              >
-                {waitingCount}
-              </p>
+          <form onSubmit={createQueue} className="space-y-4">
+            <div className="relative rounded-2xl border border-slate-200 bg-slate-50 transition focus-within:border-blue-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10">
+              <UserRound size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Nama lengkap nasabah"
+                autoComplete="off"
+                maxLength={80}
+                className="h-14 w-full bg-transparent pl-12 pr-16 text-base font-medium text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400"
+                aria-label="Nama lengkap nasabah"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs tabular-nums text-slate-400">{name.length}/80</span>
             </div>
-
-            <div
-              className="
-              w-11
-              h-11
-              rounded-xl
-              bg-blue-50
-              text-blue-600
-              flex
-              items-center
-              justify-center
-            "
+            <button
+              type="submit"
+              disabled={saving || !name.trim()}
+              className="group flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Users size={22} />
-            </div>
-          </div>
+              {saving ? <RefreshCw size={19} className="animate-spin" /> : <Ticket size={19} className="transition-transform group-hover:scale-110" />} {saving ? 'Membuat Nomor...' : 'Ambil Nomor Sekarang'}
+            </button>
+          </form>
+          <p className="mt-3 text-center text-xs text-slate-400">Tekan Enter setelah nama nasabah diisi</p>
         </div>
+      </section>
 
-        {/* Sedang Dilayani */}
-        <div
-          data-aos="fade-up"
-          data-aos-delay="100"
-          className="
-            bg-white
-            rounded-2xl
-            p-5
-            shadow-sm
-            border
-            border-slate-100
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-          "
-          >
+      {calledQueue && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+          <div className="flex items-center gap-3 text-emerald-800">
+            <CheckCircle2 size={22} />
             <div>
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Sedang Dilayani
-              </p>
-
-              <p
-                className="
-                text-3xl
-                font-bold
-                text-slate-800
-                mt-1
-              "
-              >
-                {servingCount}
+              <p className="text-sm font-semibold">Sedang Dipanggil</p>
+              <p className="text-xl font-black">
+                {calledQueue.queue_number} - {calledQueue.customer_name}
               </p>
             </div>
-
-            <div
-              className="
-              w-11
-              h-11
-              rounded-xl
-              bg-amber-50
-              text-amber-600
-              flex
-              items-center
-              justify-center
-            "
-            >
-              <Activity size={22} />
-            </div>
+            <button onClick={finishQueue} disabled={finishing} className="ml-auto rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
+              {finishing ? 'Menyimpan...' : 'Selesai'}
+            </button>
           </div>
-        </div>
+        </section>
+      )}
 
-        {/* CS */}
-        <div
-          data-aos="fade-up"
-          data-aos-delay="200"
-          className="
-            bg-white
-            rounded-2xl
-            p-5
-            shadow-sm
-            border
-            border-slate-100
-            col-span-2
-            lg:col-span-1
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-          "
-          >
-            <div>
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Customer Service
-              </p>
-
-              <p
-                className="
-                text-3xl
-                font-bold
-                text-slate-800
-                mt-1
-              "
-              >
-                {csUsers.length}
-              </p>
-            </div>
-
-            <div
-              className="
-              w-11
-              h-11
-              rounded-xl
-              bg-yellow-50
-              text-yellow-600
-              flex
-              items-center
-              justify-center
-            "
-            >
-              <UserRound size={22} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================
-          INPUT NOMOR ANTRIAN
-      ======================================== */}
-
-      <div
-        data-aos="fade-up"
-        className="
-          bg-white
-          rounded-3xl
-          shadow-sm
-          border
-          border-slate-100
-          p-5
-          md:p-7
-        "
-      >
-        <div
-          className="
-          flex
-          items-center
-          gap-3
-          mb-5
-        "
-        >
-          <div
-            className="
-            w-11
-            h-11
-            rounded-xl
-            bg-blue-50
-            text-blue-600
-            flex
-            items-center
-            justify-center
-          "
-          >
-            <Ticket size={23} />
-          </div>
-
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
-            <h2
-              className="
-              text-lg
-              md:text-xl
-              font-bold
-              text-slate-800
-            "
-            >
-              Ambil Nomor Antrian
-            </h2>
-
-            <p
-              className="
-              text-sm
-              text-slate-500
-            "
-            >
-              Masukkan nama nasabah untuk mendapatkan nomor antrian.
-            </p>
+            <h2 className="font-bold text-slate-800">Antrian Menunggu</h2>
+            <p className="text-sm text-slate-500">{waitingQueues.length} nasabah</p>
           </div>
-        </div>
-
-        <form
-          onSubmit={createQueue}
-          className="
-            flex
-            flex-col
-            md:flex-row
-            gap-3
-          "
-        >
-          <div
-            className="
-            relative
-            flex-1
-          "
-          >
-            <UserRound
-              size={20}
-              className="
-                absolute
-                left-4
-                top-1/2
-                -translate-y-1/2
-                text-slate-400
-              "
-            />
-
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nama nasabah"
-              className="
-                w-full
-                h-12
-                pl-12
-                pr-4
-                rounded-xl
-                border
-                border-slate-200
-                outline-none
-                focus:border-blue-500
-                focus:ring-4
-                focus:ring-blue-500/10
-                transition
-              "
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="
-              h-12
-              px-6
-              rounded-xl
-              bg-[#0b57d0]
-              hover:bg-[#0848ae]
-              text-white
-              font-semibold
-              flex
-              items-center
-              justify-center
-              gap-2
-              transition
-              disabled:opacity-60
-              disabled:cursor-not-allowed
-            "
-          >
-            {loading ? (
-              <>
-                <RefreshCw size={18} className="animate-spin" />
-                Memproses...
-              </>
-            ) : (
-              <>
-                <Ticket size={18} />
-                Ambil Nomor
-              </>
-            )}
+          <button onClick={loadQueues} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Refresh antrean">
+            <RefreshCw size={18} />
           </button>
-        </form>
-
-        {/* NOMOR TERAKHIR */}
-        {queue && (
-          <div
-            data-aos="zoom-in"
-            className="
-              mt-5
-              rounded-2xl
-              bg-gradient-to-r
-              from-blue-50
-              to-yellow-50
-              border
-              border-blue-100
-              p-5
-              flex
-              flex-col
-              sm:flex-row
-              sm:items-center
-              sm:justify-between
-              gap-4
-            "
-          >
-            <div>
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Nomor antrian terbaru
-              </p>
-
-              <p
-                className="
-                text-slate-800
-                font-semibold
-                mt-1
-              "
-              >
-                {queue.customer_name}
-              </p>
-            </div>
-
-            <div
-              className="
-              text-4xl
-              font-black
-              text-[#0b57d0]
-            "
-            >
-              {queue.queue_number}
-            </div>
+        </div>
+        {loading ? (
+          <p className="p-10 text-center text-sm text-slate-400">Memuat antrean...</p>
+        ) : waitingQueues.length === 0 ? (
+          <p className="p-10 text-center text-sm text-slate-400">Tidak ada antrean menunggu.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {waitingQueues.map((queue) => (
+              <div key={queue.id} className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-slate-50">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-14 items-center justify-center rounded-xl bg-blue-50 font-black text-blue-700">{queue.queue_number}</span>
+                  <div>
+                    <p className="font-semibold text-slate-800">{queue.customer_name}</p>
+                    <p className="text-xs text-slate-400">Diambil pukul {formatTime(queue.created_at)}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => callQueue(queue)}
+                  disabled={callingId !== null || calledQueue !== null}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Phone size={16} /> Panggil
+                </button>
+              </div>
+            ))}
           </div>
         )}
-      </div>
-
-      {/* ========================================
-          MOBILE
-      ======================================== */}
-
-      <div
-        className="
-        grid
-        grid-cols-1
-        gap-6
-        lg:hidden
-      "
-      >
-        {/* SEDANG DILAYANI */}
-        <div
-          data-aos="fade-up"
-          className="
-            bg-white
-            rounded-3xl
-            shadow-sm
-            border
-            border-slate-100
-            p-5
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-            mb-5
-          "
-          >
-            <div>
-              <h2
-                className="
-                text-lg
-                font-bold
-                text-slate-800
-              "
-              >
-                Sedang Dilayani
-              </h2>
-
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Monitoring pelayanan CS
-              </p>
-            </div>
-
-            <Activity size={22} className="text-blue-600" />
-          </div>
-
-          {servingQueues.length === 0 ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              <Timer
-                size={35}
-                className="
-                  mx-auto
-                  mb-3
-                "
-              />
-
-              <p>Belum ada nasabah yang sedang dilayani.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {servingQueues.map((item) => {
-                const remaining = getRemainingSeconds(item);
-
-                const progress = getServiceProgress(item);
-
-                const isExpired = remaining === 0;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="
-                      rounded-2xl
-                      border
-                      border-slate-200
-                      p-4
-                      bg-slate-50/50
-                    "
-                  >
-                    {/* QUEUE */}
-                    <div
-                      className="
-                      flex
-                      items-center
-                      justify-between
-                      gap-3
-                    "
-                    >
-                      <div>
-                        <div
-                          className="
-                          text-2xl
-                          font-black
-                          text-[#0b57d0]
-                        "
-                        >
-                          {item.queue_number}
-                        </div>
-
-                        <p
-                          className="
-                          font-semibold
-                          text-slate-800
-                        "
-                        >
-                          {item.customer_name}
-                        </p>
-                      </div>
-
-                      <div
-                        className="
-                        text-right
-                      "
-                      >
-                        <p
-                          className="
-                          text-xs
-                          text-slate-500
-                        "
-                        >
-                          Sisa Waktu
-                        </p>
-
-                        <p
-                          className={`
-                            text-2xl
-                            font-black
-                            ${isExpired ? 'text-amber-600' : 'text-blue-700'}
-                          `}
-                        >
-                          {formatCountdown(remaining)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* PROGRESS */}
-                    <div className="mt-5">
-                      <div
-                        className="
-                        flex
-                        items-center
-                        justify-between
-                        text-xs
-                        mb-2
-                      "
-                      >
-                        <span
-                          className="
-                          text-slate-500
-                        "
-                        >
-                          Progress pelayanan
-                        </span>
-
-                        <span
-                          className="
-                          font-bold
-                          text-slate-700
-                        "
-                        >
-                          {Math.round(progress)}%
-                        </span>
-                      </div>
-
-                      <div
-                        className="
-                        h-3
-                        rounded-full
-                        bg-slate-200
-                        overflow-hidden
-                      "
-                      >
-                        <div
-                          className={`
-                            h-full
-                            rounded-full
-                            transition-all
-                            duration-500
-                            ${isExpired ? 'bg-amber-500' : 'bg-blue-600'}
-                          `}
-                          style={{
-                            width: `${progress}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* INFO */}
-                    <div
-                      className="
-                      mt-4
-                      grid
-                      grid-cols-2
-                      gap-3
-                      text-sm
-                    "
-                    >
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          CS
-                        </p>
-
-                        <p
-                          className="
-                          font-semibold
-                          text-slate-700
-                        "
-                        >
-                          {getCSName(item.cs_id)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Mulai
-                        </p>
-
-                        <p
-                          className="
-                          font-semibold
-                          text-slate-700
-                        "
-                        >
-                          {formatShortTime(item.started_at)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Estimasi
-                        </p>
-
-                        <p
-                          className="
-                          font-semibold
-                          text-slate-700
-                        "
-                        >
-                          {item.estimated_time} menit
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Status
-                        </p>
-
-                        <span
-                          className="
-                          inline-flex
-                          items-center
-                          gap-1
-                          px-2
-                          py-1
-                          mt-1
-                          rounded-full
-                          bg-amber-50
-                          text-amber-700
-                          text-xs
-                          font-semibold
-                        "
-                        >
-                          <Activity size={12} />
-                          Dilayani
-                        </span>
-                      </div>
-                    </div>
-
-                    {isExpired && (
-                      <div
-                        className="
-                        mt-4
-                        flex
-                        items-center
-                        gap-2
-                        rounded-xl
-                        bg-amber-50
-                        text-amber-700
-                        px-3
-                        py-2
-                        text-sm
-                        font-semibold
-                      "
-                      >
-                        <Clock3 size={16} />
-                        Waktu pelayanan habis
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* QUEUE HARI INI */}
-        <div
-          data-aos="fade-up"
-          className="
-            bg-white
-            rounded-3xl
-            shadow-sm
-            border
-            border-slate-100
-            p-5
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-            mb-5
-          "
-          >
-            <div>
-              <h2
-                className="
-                text-lg
-                font-bold
-                text-slate-800
-              "
-              >
-                Antrian Hari Ini
-              </h2>
-
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Daftar nasabah yang menunggu
-              </p>
-            </div>
-
-            <span
-              className="
-              px-3
-              py-1
-              rounded-full
-              bg-blue-50
-              text-blue-700
-              text-sm
-              font-bold
-            "
-            >
-              {waitingQueues.length}
-            </span>
-          </div>
-
-          {loadingData ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              Memuat data...
-            </div>
-          ) : waitingQueues.length === 0 ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              Tidak ada antrian menunggu.
-            </div>
-          ) : (
-            <div
-              className="
-              space-y-2
-              max-h-[430px]
-              overflow-y-auto
-              pr-1
-            "
-            >
-              {waitingQueues.map((item) => (
-                <div
-                  key={item.id}
-                  className="
-                    flex
-                    items-center
-                    justify-between
-                    gap-3
-                    p-3
-                    rounded-xl
-                    border
-                    border-slate-100
-                    hover:bg-slate-50
-                    transition
-                  "
-                >
-                  <div
-                    className="
-                    flex
-                    items-center
-                    gap-3
-                  "
-                  >
-                    <div
-                      className="
-                      w-12
-                      h-12
-                      rounded-xl
-                      bg-blue-50
-                      text-blue-700
-                      flex
-                      items-center
-                      justify-center
-                      font-black
-                    "
-                    >
-                      {item.queue_number}
-                    </div>
-
-                    <div>
-                      <p
-                        className="
-                        font-semibold
-                        text-slate-800
-                      "
-                      >
-                        {item.customer_name}
-                      </p>
-
-                      <p
-                        className="
-                        text-xs
-                        text-slate-400
-                      "
-                      >
-                        {formatShortTime(item.created_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className="
-                    px-2
-                    py-1
-                    rounded-full
-                    bg-blue-50
-                    text-blue-600
-                    text-xs
-                    font-semibold
-                  "
-                  >
-                    Menunggu
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ========================================
-          DESKTOP
-      ======================================== */}
-
-      <div
-        className="
-        hidden
-        lg:grid
-        lg:grid-cols-2
-        gap-6
-      "
-      >
-        {/* ANTRIAN HARI INI */}
-        <div
-          data-aos="fade-up"
-          className="
-            bg-white
-            rounded-3xl
-            shadow-sm
-            border
-            border-slate-100
-            p-6
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-            mb-5
-          "
-          >
-            <div>
-              <h2
-                className="
-                text-xl
-                font-bold
-                text-slate-800
-              "
-              >
-                Antrian Hari Ini
-              </h2>
-
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Nasabah yang sedang menunggu
-              </p>
-            </div>
-
-            <span
-              className="
-              px-3
-              py-1
-              rounded-full
-              bg-blue-50
-              text-blue-700
-              font-bold
-            "
-            >
-              {waitingQueues.length}
-            </span>
-          </div>
-
-          {loadingData ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              Memuat data...
-            </div>
-          ) : waitingQueues.length === 0 ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              Tidak ada antrian menunggu.
-            </div>
-          ) : (
-            <div
-              className="
-              space-y-2
-              max-h-[430px]
-              overflow-y-auto
-              pr-2
-            "
-            >
-              {waitingQueues.map((item) => (
-                <div
-                  key={item.id}
-                  className="
-                    flex
-                    items-center
-                    justify-between
-                    p-3
-                    rounded-xl
-                    border
-                    border-slate-100
-                    hover:bg-slate-50
-                    transition
-                  "
-                >
-                  <div
-                    className="
-                    flex
-                    items-center
-                    gap-3
-                  "
-                  >
-                    <div
-                      className="
-                      w-12
-                      h-12
-                      rounded-xl
-                      bg-blue-50
-                      text-blue-700
-                      flex
-                      items-center
-                      justify-center
-                      font-black
-                    "
-                    >
-                      {item.queue_number}
-                    </div>
-
-                    <div>
-                      <p
-                        className="
-                        font-semibold
-                        text-slate-800
-                      "
-                      >
-                        {item.customer_name}
-                      </p>
-
-                      <p
-                        className="
-                        text-xs
-                        text-slate-400
-                      "
-                      >
-                        Diambil pukul {formatTime(item.created_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className="
-                    px-3
-                    py-1
-                    rounded-full
-                    bg-blue-50
-                    text-blue-600
-                    text-xs
-                    font-semibold
-                  "
-                  >
-                    Menunggu
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* SEDANG DILAYANI */}
-        <div
-          data-aos="fade-up"
-          data-aos-delay="100"
-          className="
-            bg-white
-            rounded-3xl
-            shadow-sm
-            border
-            border-slate-100
-            p-6
-          "
-        >
-          <div
-            className="
-            flex
-            items-center
-            justify-between
-            mb-5
-          "
-          >
-            <div>
-              <h2
-                className="
-                text-xl
-                font-bold
-                text-slate-800
-              "
-              >
-                Sedang Dilayani
-              </h2>
-
-              <p
-                className="
-                text-sm
-                text-slate-500
-              "
-              >
-                Monitoring pelayanan Customer Service
-              </p>
-            </div>
-
-            <Activity size={23} className="text-blue-600" />
-          </div>
-
-          {servingQueues.length === 0 ? (
-            <div
-              className="
-              py-10
-              text-center
-              text-slate-400
-            "
-            >
-              <Timer
-                size={38}
-                className="
-                  mx-auto
-                  mb-3
-                "
-              />
-
-              <p>Belum ada nasabah yang sedang dilayani.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {servingQueues.map((item) => {
-                const remaining = getRemainingSeconds(item);
-
-                const progress = getServiceProgress(item);
-
-                const isExpired = remaining === 0;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="
-                      rounded-2xl
-                      border
-                      border-slate-200
-                      p-5
-                      bg-slate-50/50
-                    "
-                  >
-                    {/* HEADER */}
-                    <div
-                      className="
-                      flex
-                      items-start
-                      justify-between
-                      gap-4
-                    "
-                    >
-                      <div
-                        className="
-                        flex
-                        items-center
-                        gap-4
-                      "
-                      >
-                        <div
-                          className="
-                          w-16
-                          h-16
-                          rounded-2xl
-                          bg-blue-50
-                          text-blue-700
-                          flex
-                          items-center
-                          justify-center
-                          text-xl
-                          font-black
-                        "
-                        >
-                          {item.queue_number}
-                        </div>
-
-                        <div>
-                          <p
-                            className="
-                            font-bold
-                            text-slate-800
-                          "
-                          >
-                            {item.customer_name}
-                          </p>
-
-                          <p
-                            className="
-                            text-sm
-                            text-slate-500
-                            mt-1
-                          "
-                          >
-                            CS:{' '}
-                            <span
-                              className="
-                              font-semibold
-                              text-slate-700
-                            "
-                            >
-                              {getCSName(item.cs_id)}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* COUNTDOWN */}
-                      <div
-                        className="
-                        text-right
-                      "
-                      >
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                          uppercase
-                          tracking-wide
-                        "
-                        >
-                          Sisa Waktu
-                        </p>
-
-                        <p
-                          className={`
-                            text-3xl
-                            font-black
-                            tracking-tight
-                            ${isExpired ? 'text-amber-600' : 'text-blue-700'}
-                          `}
-                        >
-                          {formatCountdown(remaining)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* PROGRESS BAR */}
-                    <div className="mt-6">
-                      <div
-                        className="
-                        flex
-                        justify-between
-                        items-center
-                        mb-2
-                      "
-                      >
-                        <span
-                          className="
-                          text-xs
-                          font-medium
-                          text-slate-500
-                        "
-                        >
-                          Progress pelayanan
-                        </span>
-
-                        <span
-                          className="
-                          text-xs
-                          font-bold
-                          text-slate-700
-                        "
-                        >
-                          {Math.round(progress)}%
-                        </span>
-                      </div>
-
-                      <div
-                        className="
-                        h-3
-                        rounded-full
-                        bg-slate-200
-                        overflow-hidden
-                      "
-                      >
-                        <div
-                          className={`
-                            h-full
-                            rounded-full
-                            transition-all
-                            duration-500
-                            ${isExpired ? 'bg-amber-500' : 'bg-blue-600'}
-                          `}
-                          style={{
-                            width: `${progress}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* DETAIL */}
-                    <div
-                      className="
-                      grid
-                      grid-cols-3
-                      gap-4
-                      mt-5
-                    "
-                    >
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Mulai Dilayani
-                        </p>
-
-                        <p
-                          className="
-                          text-sm
-                          font-semibold
-                          text-slate-700
-                          mt-1
-                        "
-                        >
-                          {formatTime(item.started_at)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Estimasi
-                        </p>
-
-                        <p
-                          className="
-                          text-sm
-                          font-semibold
-                          text-slate-700
-                          mt-1
-                        "
-                        >
-                          {item.estimated_time} menit
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          className="
-                          text-xs
-                          text-slate-400
-                        "
-                        >
-                          Status
-                        </p>
-
-                        <span
-                          className="
-                          inline-flex
-                          items-center
-                          gap-1
-                          px-2.5
-                          py-1
-                          mt-1
-                          rounded-full
-                          bg-amber-50
-                          text-amber-700
-                          text-xs
-                          font-semibold
-                        "
-                        >
-                          <Activity size={12} />
-                          Dilayani
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* WAKTU HABIS */}
-                    {isExpired && (
-                      <div
-                        className="
-                        mt-5
-                        flex
-                        items-center
-                        gap-2
-                        rounded-xl
-                        bg-amber-50
-                        border
-                        border-amber-100
-                        text-amber-700
-                        px-4
-                        py-3
-                        text-sm
-                        font-semibold
-                      "
-                      >
-                        <Clock3 size={18} />
-                        Waktu pelayanan sudah habis.
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ========================================
-          FOOTER
-      ======================================== */}
-
-      <div
-        className="
-        text-center
-        text-xs
-        text-slate-400
-        pb-3
-      "
-      >
-        SAC-Mandiri • Sistem Antrian Customer Service
-      </div>
+      </section>
     </div>
   );
 }

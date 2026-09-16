@@ -12,12 +12,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/vite": "^4.3.3",
-    "aos": "^2.3.4",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
-    "recharts": "^3.10.1",
     "sweetalert2": "^11.26.25",
     "tailwindcss": "^4.3.3"
   },
