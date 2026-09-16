@@ -226,7 +226,7 @@ export default function Sidebar({ open = false, onClose }) {
                   text-white
                 "
               >
-                SAC
+                Bedebis
               </h2>
 
               <p

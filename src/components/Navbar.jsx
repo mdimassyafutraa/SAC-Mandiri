@@ -63,7 +63,7 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
     tracking-wide
   "
           >
-            SAC
+            Bedebis
           </h1>
 
           <h1

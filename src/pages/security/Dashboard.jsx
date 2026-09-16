@@ -166,7 +166,7 @@ export default function SecurityDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between border-b border-slate-200 pb-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">SAC</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Bedebis</p>
           <h1 className="mt-1 text-xl font-bold text-slate-900 md:text-2xl">Antrean Nasabah</h1>
         </div>
         <div className="hidden rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 sm:block">Petugas Security</div>
